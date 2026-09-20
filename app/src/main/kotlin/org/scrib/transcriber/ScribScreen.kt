@@ -83,6 +83,7 @@ fun ScribScreen(
     onSelfTest: () -> Unit,
     onPickLanguage: (LanguageOption) -> Unit,
     onSkipSilence: (Boolean) -> Unit,
+    onUseGpu: (Boolean) -> Unit,
     recording: RecordingUi?,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
@@ -137,6 +138,7 @@ fun ScribScreen(
                 item { TranscribeFileButton { audioPicker.launch(arrayOf("audio/*", "video/*")) } }
                 item { KeyboardEntry() }
                 item { SkipSilenceEntry(state, onSkipSilence) }
+                item { UseGpuEntry(state, onUseGpu) }
             }
             item {
                 Text(
@@ -757,6 +759,30 @@ private fun SkipSilenceEntry(state: ScribUiState, onToggle: (Boolean) -> Unit) {
             }
             Spacer(Modifier.width(8.dp))
             Switch(checked = state.skipSilence, enabled = !busy, onCheckedChange = { onToggle(it) })
+        }
+    }
+}
+
+// A driver crash or a very slow first-use shader compile on some GPUs (seen on PowerVR, for
+// instance) is the reason this needs a manual override rather than relying only on the
+// automatic CPU fallback baked into the native side.
+@Composable
+private fun UseGpuEntry(state: ScribUiState, onToggle: (Boolean) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        color = cs.surfaceContainer, shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            .clickableRow { onToggle(!state.useGpu) }
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("⚡", fontSize = 18.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.gpu_entry_title), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
+                Text(stringResource(R.string.gpu_entry_sub), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = cs.onSurfaceVariant, lineHeight = 16.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Switch(checked = state.useGpu, onCheckedChange = { onToggle(it) })
         }
     }
 }

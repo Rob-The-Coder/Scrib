@@ -15,6 +15,7 @@ android {
     defaultConfig {
         applicationId 'org.scrib.transcriber'
         minSdk 26
+        // minSdk 29
         targetSdk 35
         versionCode 9
         versionName '0.9'
@@ -25,8 +26,17 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags '-O3'
+                //cppFlags "-I/home/roberto/Android/Vulkan-Headers/include -I/home/roberto/Android/SPIRV-Headers/include"
+                //cppFlags "-I/home/roberto/Android/Vulkan-Headers/include " +
+                //        "-I/home/roberto/Android/SPIRV-Headers/include " +
+                //        "-DVULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1"
                 cFlags '-O3'
                 arguments '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+                // Lets find_package() see host-installed CMake config packages (like SPIRV-Headers)
+                // in addition to the Android NDK sysroot — needed by ggml-vulkan's host-side
+                // shader generator tool.
+                arguments '-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH'
+                arguments '-DANDROID_PLATFORM=android-29'
             }
         }
     }
@@ -57,6 +67,7 @@ android {
         }
         debug {
             applicationIdSuffix '.debug'
+            resValue "string", "app_name", "Scrib Dev"
         }
     }
 

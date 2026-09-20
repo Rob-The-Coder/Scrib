@@ -9,12 +9,32 @@
 #include "whisper.h"
 #include "ggml.h"
 #include "ggml-backend.h"
+#include <time.h>
 
 #define UNUSED(x) (void)(x)
 #define TAG "JNI"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,     TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,     TAG, __VA_ARGS__)
+
+static void scrib_log(enum ggml_log_level level, const char * text, void * user_data) {
+    UNUSED(user_data);
+    int prio = (level == GGML_LOG_LEVEL_ERROR) ? ANDROID_LOG_ERROR
+                                               : (level == GGML_LOG_LEVEL_WARN)  ? ANDROID_LOG_WARN
+                                                                                 : ANDROID_LOG_INFO;
+    __android_log_print(prio, "ggml", "%s", text);
+}
+
+// Routes ggml's and whisper's own logging (including the "Found N Vulkan
+// devices" line ggml-vulkan prints on init) straight to logcat instead of
+// the void, since neither library does this on Android by default.
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
+    UNUSED(vm);
+    UNUSED(reserved);
+    ggml_log_set(scrib_log, NULL);
+    whisper_log_set(scrib_log, NULL);
+    return JNI_VERSION_1_6;
+}
 
 // On arm64 the CPU kernels live in one library per instruction-set level rather than inside
 // whisper's own, and one of them has to be registered before a context can be created. They are
@@ -39,6 +59,15 @@ static void load_cpu_backend(void) {
         }
     }
     LOGW("Found no loadable cpu backend\n");
+}
+
+// Mirrors load_cpu_backend() above: under GGML_BACKEND_DL the Vulkan backend is built as its
+// own loadable library rather than linked in statically, so it needs an explicit load call
+// before a context that wants GPU acceleration is created.
+static void load_vulkan_backend(void) {
+    if (ggml_backend_load("libggml-vulkan.so") == NULL) {
+        LOGW("Failed to load Vulkan backend, will fall back to CPU\n");
+    }
 }
 
 static inline int min(int a, int b) {
@@ -171,14 +200,26 @@ Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContextFromAsset(
 
 JNIEXPORT jlong JNICALL
 Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContext(
-        JNIEnv *env, jobject thiz, jstring model_path_str) {
+        JNIEnv *env, jobject thiz, jstring model_path_str, jboolean use_gpu) {
     UNUSED(thiz);
     struct whisper_context *context = NULL;
     load_cpu_backend();
+    if (use_gpu) {
+        load_vulkan_backend();
+    }
     const char *model_path_chars = (*env)->GetStringUTFChars(env, model_path_str, NULL);
     struct whisper_context_params cparams = whisper_context_default_params();
     cparams.flash_attn = true;
+    cparams.use_gpu = use_gpu != JNI_FALSE;
     context = whisper_init_from_file_with_params(model_path_chars, cparams);
+    __android_log_print(ANDROID_LOG_INFO, "Scrib", "Context created, use_gpu=%d (context %s)", use_gpu, context ? "ok" : "NULL");
+    // GPU init can fail even after the backend loaded (missing driver support, out of memory
+    // on a large model) — retry once on CPU instead of handing the caller a null context.
+    if (context == NULL && cparams.use_gpu) {
+        LOGW("GPU context init failed, retrying on CPU\n");
+        cparams.use_gpu = false;
+        context = whisper_init_from_file_with_params(model_path_chars, cparams);
+    }
     (*env)->ReleaseStringUTFChars(env, model_path_str, model_path_chars);
     return (jlong) context;
 }
@@ -418,11 +459,17 @@ static void fgt_full_transcribe(
 
     whisper_reset_timings(context);
 
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
     LOGI("About to run whisper_full");
     int result = whisper_full(context, params, samples, n_samples);
     // A VAD model that fails to load takes the whole run down with it, and an empty transcript is
     // a poor answer to a broken detector. Decoding the quiet parts as well is slower, but it is
     // the result the user asked for. A cancelled run fails the same way and must stay cancelled.
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    long ms = (t1.tv_sec - t0.tv_sec) * 1000L + (t1.tv_nsec - t0.tv_nsec) / 1000000L;
+    __android_log_print(ANDROID_LOG_INFO, "Scrib", "whisper_full total time: %ld ms", ms);
     if (result != 0 && params.vad && !fgt_should_abort(abort_flag)) {
         LOGW("Transcription with VAD failed, retrying without it");
         params.vad = false;

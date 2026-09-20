@@ -180,8 +180,10 @@ class WhisperContext private constructor(private var ptr: Long) {
     }
 
     companion object {
-        fun createContextFromFile(filePath: String): WhisperContext {
-            val ptr = WhisperLib.initContext(filePath)
+        // useGpu defaults to true: the native side already retries on CPU by itself if GPU
+        // init fails, so callers don't need to handle that fallback.
+        fun createContextFromFile(filePath: String, useGpu: Boolean = true): WhisperContext {
+            val ptr = WhisperLib.initContext(filePath, useGpu)
             if (ptr == 0L) {
                 throw RuntimeException("Couldn't create context with path $filePath")
             }
@@ -237,7 +239,7 @@ private class WhisperLib {
         }
 
         external fun initContextFromAsset(assetManager: AssetManager, assetPath: String): Long
-        external fun initContext(modelPath: String): Long
+        external fun initContext(modelPath: String, useGpu: Boolean): Long
         external fun freeContext(contextPtr: Long)
         external fun fullTranscribe(contextPtr: Long, numThreads: Int, audioData: FloatArray, language: String, segmentCallback: WhisperSegmentCallback?, abortFlagPtr: Long)
         external fun fullTranscribeDirect(contextPtr: Long, numThreads: Int, audioBuffer: ByteBuffer, sampleCount: Int, language: String, prompt: String, suppressNonSpeech: Boolean, vadModelPath: String, segmentCallback: WhisperSegmentCallback?, progressCallback: WhisperProgressCallback?, abortFlagPtr: Long)

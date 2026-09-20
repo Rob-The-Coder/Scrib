@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
                         onSelfTest = vm::selfTest,
                         onPickLanguage = vm::setupForLanguage,
                         onSkipSilence = vm::setSkipSilence,
+                        onUseGpu = vm::setUseGpu,
                         recording = recording,
                         onStartRecording = vm::startRecording,
                         onStopRecording = vm::stopRecording,

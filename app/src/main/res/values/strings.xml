@@ -37,6 +37,9 @@
     <string name="vad_entry_downloading">Downloading the speech detector… %1$d%%</string>
     <string name="status_vad_failed">Couldn\'t download the speech detector — check your connection and try again.</string>
 
+    <string name="gpu_entry_title">Use GPU acceleration</string>
+    <string name="gpu_entry_sub">Runs transcription on the device GPU when available. Falls back to CPU automatically if it fails — turn off if transcription is slower or unstable on your device.</string>
+
     <string name="ime_label">Scrib Voice</string>
     <string name="ime_entry_title">Voice keyboard</string>
     <string name="ime_entry_sub">Dictate into any app — switch Scrib on in the system keyboard list</string>

@@ -19,6 +19,34 @@ message(STATUS " Whisper version: ${WHISPER_VERSION}")
 # Path to external GGML, otherwise uses the copy in whisper.cpp.
 option(GGML_HOME "whisper: Path to external GGML source" OFF)
 
+# Enables the Vulkan compute backend so whisper can offload inference to the phone's GPU.
+option(SCRIB_GPU "whisper: enable Vulkan GPU backend" ON)
+
+if (SCRIB_GPU)
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+
+    # The NDK's own libvulkan.so ships only the C header (vulkan/vulkan.h); ggml-vulkan needs
+    # the C++ bindings (vulkan.hpp) and the SPIR-V headers, neither of which the NDK bundles.
+    # Fetched here instead of relying on a system package, so the build is reproducible on any
+    # machine without manual setup.
+    include(FetchContent)
+    FetchContent_Declare(
+            vulkan-headers
+            GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+            GIT_TAG vulkan-sdk-1.4.341.0
+    )
+    FetchContent_Declare(
+            spirv-headers
+            GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers.git
+            GIT_TAG vulkan-sdk-1.4.341.0
+    )
+    FetchContent_MakeAvailable(vulkan-headers spirv-headers)
+
+    set(Vulkan_INCLUDE_DIR "${vulkan-headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+    add_compile_definitions(VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1)
+    include_directories("${spirv-headers_SOURCE_DIR}/include")
+endif()
+
 set(
     SOURCE_FILES
     ${WHISPER_LIB_DIR}/src/whisper.cpp
@@ -26,6 +54,7 @@ set(
     )
 
 find_library(LOG_LIB log)
+find_library(VULKAN_LIB vulkan)
 
 # The arm64 CPU kernels are built once per instruction-set level and loaded at run time, so a
 # phone that has the dot product instructions gets kernels that use them while an older one
@@ -47,6 +76,9 @@ function(build_library target_name)
     )
 
     target_compile_definitions(${target_name} PUBLIC GGML_USE_CPU)
+    if (SCRIB_GPU)
+        target_compile_definitions(${target_name} PUBLIC GGML_USE_VULKAN)
+    endif()
     target_compile_definitions(${target_name} PRIVATE WHISPER_VERSION="${WHISPER_VERSION}")
 
     if (${target_name} STREQUAL "whisper_v8fp16_va")
@@ -74,8 +106,7 @@ function(build_library target_name)
     endif()
     FetchContent_MakeAvailable(ggml)
     target_compile_options(ggml PRIVATE ${GGML_COMPILE_OPTIONS})
-    target_link_libraries(${target_name} ${LOG_LIB} android ggml)
-
+    target_link_libraries(${target_name} ${LOG_LIB} ${VULKAN_LIB} android ggml)
 
 endfunction()
 

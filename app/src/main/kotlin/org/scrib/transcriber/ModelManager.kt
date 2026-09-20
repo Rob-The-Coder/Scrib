@@ -13,6 +13,7 @@ object ModelManager {
     private const val KEY_ACTIVE = "activeModelFile"
     private const val KEY_SKIP_SILENCE = "skipSilence"
     private const val LEGACY_MODEL = "ggml-tiny-q5_1.bin"
+    private const val KEY_USE_GPU = "useGpu"
 
     // The VAD model is a fraction of the size of even the smallest whisper one, so it cannot be
     // held to the same floor.
@@ -114,9 +115,19 @@ object ModelManager {
     fun skipSilence(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SKIP_SILENCE, false)
 
-    fun setSkipSilence(context: Context, enabled: Boolean) {
+        fun setSkipSilence(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_SKIP_SILENCE, enabled).apply()
+    }
+
+    // GPU on by default; the native side already falls back to CPU by itself if the backend
+    // fails to load or the device has none, so this is safe even on hardware without Vulkan.
+    fun useGpu(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPU, true)
+
+    fun setUseGpu(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_USE_GPU, enabled).apply()
     }
 
     // The path to hand whisper, or null when silence is to be decoded along with everything else.

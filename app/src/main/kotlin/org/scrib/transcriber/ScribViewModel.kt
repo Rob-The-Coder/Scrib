@@ -46,6 +46,7 @@ data class ScribUiState(
     val statusError: Boolean,
     val skipSilence: Boolean,
     // Progress of the one-off VAD model download, or -1 when nothing is being fetched.
+    val useGpu: Boolean,
     val vadProgress: Int
 )
 
@@ -126,7 +127,8 @@ class ScribViewModel(app: Application) : AndroidViewModel(app) {
             firstRun = installed.isEmpty() && downloads.isEmpty(),
             activeName = activeFriendly, standard = standard, custom = custom,
             statusMsg = statusMsg, statusError = statusError,
-            skipSilence = ModelManager.skipSilence(ctx), vadProgress = vadPct
+            skipSilence = ModelManager.skipSilence(ctx), useGpu = ModelManager.useGpu(ctx),
+            vadProgress = vadPct
         )
     }
 
@@ -219,6 +221,13 @@ class ScribViewModel(app: Application) : AndroidViewModel(app) {
             vadPct = -1; vadJob = null
             push()
         }
+    }
+
+    // Takes effect on the next transcription: the cached whisper context is keyed on this
+    // setting too (see WhisperTranscriptionEngine), so a stale GPU/CPU context is never reused.
+    fun setUseGpu(enabled: Boolean) {
+        ModelManager.setUseGpu(ctx, enabled)
+        push()
     }
 
     fun activate(fileName: String) {

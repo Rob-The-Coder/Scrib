@@ -18,6 +18,9 @@ class WhisperTranscriptionEngine(private val appContext: Context) : Transcriptio
     @Volatile
     private var loadedPath: String? = null
 
+    @Volatile
+    private var loadedUseGpu: Boolean = true
+
     override fun transcribe(
         audio: ParcelFileDescriptor,
         request: TranscriptionRequest?,
@@ -147,17 +150,19 @@ class WhisperTranscriptionEngine(private val appContext: Context) : Transcriptio
     private fun whisperContext(): WhisperContext {
         val model = ModelManager.activeModelFile(appContext) ?: throw ModelNotAvailableException()
         val path = model.absolutePath
+        val useGpu = ModelManager.useGpu(appContext)
         whisper?.let {
-            if (loadedPath == path) {
+            if (loadedPath == path && loadedUseGpu == useGpu) {
                 return it
             }
             it.release()
             whisper = null
             loadedPath = null
         }
-        return WhisperContext.createContextFromFile(path).also {
+        return WhisperContext.createContextFromFile(path, useGpu).also {
             whisper = it
             loadedPath = path
+            loadedUseGpu = useGpu
         }
     }
 
