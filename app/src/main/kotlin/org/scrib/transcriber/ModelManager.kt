@@ -115,15 +115,18 @@ object ModelManager {
     fun skipSilence(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SKIP_SILENCE, false)
 
-        fun setSkipSilence(context: Context, enabled: Boolean) {
+    fun setSkipSilence(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_SKIP_SILENCE, enabled).apply()
     }
 
-    // GPU on by default; the native side already falls back to CPU by itself if the backend
-    // fails to load or the device has none, so this is safe even on hardware without Vulkan.
+    // Off by default, and not for want of an automatic fallback: on a Pixel 10 (Tensor G5,
+    // PowerVR DXT-48-1536) the Vulkan backend transcribed the sample clip into a different
+    // sentence than the CPU did, in both flash-attention configurations, and was 2.3x slower
+    // besides. The switch stays for hardware where Vulkan measures correct and faster, but it is
+    // not something to turn on for everyone. See GPU-PERF.md.
     fun useGpu(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPU, true)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPU, false)
 
     fun setUseGpu(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

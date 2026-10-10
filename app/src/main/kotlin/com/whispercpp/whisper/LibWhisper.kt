@@ -49,7 +49,13 @@ class WhisperAbortFlag {
     }
 }
 
-class WhisperContext private constructor(private var ptr: Long) {
+class WhisperContext private constructor(
+    private var ptr: Long,
+    private val useGpu: Boolean,
+    private val flashAttn: Boolean
+) {
+
+    private val threadCount: Int get() = threadsFor(useGpu)
 
     // Whisper C++ requires that a context is not accessed from more than one thread
     // at a time; the callers here are already serialized, and this enforces it too.
@@ -61,8 +67,8 @@ class WhisperContext private constructor(private var ptr: Long) {
         onSegment: ((String) -> Unit)? = null
     ): String {
         require(ptr != 0L)
-        val numThreads = WhisperCpuConfig.preferredThreadCount
-        Log.d(LOG_TAG, "Selecting $numThreads threads")
+        val numThreads = threadCount
+        Log.i(LOG_TAG, "Transcribing: gpu=$useGpu flash_attn=$flashAttn threads=$numThreads")
         WhisperLib.fullTranscribe(ptr, numThreads, data, language ?: "", segmentCallback(onSegment), abortFlag?.nativePtr() ?: 0L)
         return collectText()
     }
@@ -84,8 +90,8 @@ class WhisperContext private constructor(private var ptr: Long) {
     ): WhisperTranscription {
         require(ptr != 0L)
         require(samples.isDirect)
-        val numThreads = WhisperCpuConfig.preferredThreadCount
-        Log.d(LOG_TAG, "Selecting $numThreads threads")
+        val numThreads = threadCount
+        Log.i(LOG_TAG, "Transcribing: gpu=$useGpu flash_attn=$flashAttn threads=$numThreads")
         WhisperLib.fullTranscribeDirect(ptr, numThreads, samples, sampleCount, language ?: "", "", false, vadModelPath ?: "", segmentCallback(onSegment), progressCallback(onProgress), abortFlag?.nativePtr() ?: 0L)
         return WhisperTranscription(collectSegments(), collectSpeechSpans())
     }
@@ -103,7 +109,9 @@ class WhisperContext private constructor(private var ptr: Long) {
     ): WhisperChunk {
         require(ptr != 0L)
         require(samples.isDirect)
-        WhisperLib.fullTranscribeDirect(ptr, WhisperCpuConfig.preferredThreadCount, samples, sampleCount, language ?: "", prompt ?: "", true, "", null, null, abortFlag?.nativePtr() ?: 0L)
+        val numThreads = threadCount
+        Log.i(LOG_TAG, "Transcribing: gpu=$useGpu flash_attn=$flashAttn threads=$numThreads")
+        WhisperLib.fullTranscribeDirect(ptr, numThreads, samples, sampleCount, language ?: "", prompt ?: "", true, "", null, null, abortFlag?.nativePtr() ?: 0L)
         return WhisperChunk(collectText(), WhisperLib.fullLangId(ptr))
     }
 
@@ -181,21 +189,36 @@ class WhisperContext private constructor(private var ptr: Long) {
 
     companion object {
         // useGpu defaults to true: the native side already retries on CPU by itself if GPU
-        // init fails, so callers don't need to handle that fallback.
-        fun createContextFromFile(filePath: String, useGpu: Boolean = true): WhisperContext {
-            val ptr = WhisperLib.initContext(filePath, useGpu)
+        // init fails, so callers don't need to handle that fallback. flashAttn is separate
+        // because flash attention is the part of a GPU run most likely to land back on the CPU.
+        fun createContextFromFile(
+            filePath: String,
+            useGpu: Boolean = true,
+            flashAttn: Boolean = true
+        ): WhisperContext {
+            val ptr = WhisperLib.initContext(filePath, useGpu, flashAttn)
             if (ptr == 0L) {
                 throw RuntimeException("Couldn't create context with path $filePath")
             }
-            return WhisperContext(ptr)
+            return WhisperContext(ptr, useGpu, flashAttn)
         }
+
+        // With the GPU doing most of the work, every big core on the CPU competes with it for the
+        // same memory bandwidth and power budget, while the CPU is left with only the mel
+        // filterbank and whatever the Vulkan backend cannot run. The CPU-only path keeps using
+        // every big core, as before.
+        private const val GPU_THREAD_CAP = 4
+
+        internal fun threadsFor(useGpu: Boolean): Int =
+            if (useGpu) minOf(GPU_THREAD_CAP, WhisperCpuConfig.preferredThreadCount)
+            else WhisperCpuConfig.preferredThreadCount
 
         fun createContextFromAsset(assetManager: AssetManager, assetPath: String): WhisperContext {
             val ptr = WhisperLib.initContextFromAsset(assetManager, assetPath)
             if (ptr == 0L) {
                 throw RuntimeException("Couldn't create context from asset $assetPath")
             }
-            return WhisperContext(ptr)
+            return WhisperContext(ptr, useGpu = false, flashAttn = false)
         }
 
         fun getSystemInfo(): String = WhisperLib.getSystemInfo()
@@ -239,7 +262,7 @@ private class WhisperLib {
         }
 
         external fun initContextFromAsset(assetManager: AssetManager, assetPath: String): Long
-        external fun initContext(modelPath: String, useGpu: Boolean): Long
+        external fun initContext(modelPath: String, useGpu: Boolean, flashAttn: Boolean): Long
         external fun freeContext(contextPtr: Long)
         external fun fullTranscribe(contextPtr: Long, numThreads: Int, audioData: FloatArray, language: String, segmentCallback: WhisperSegmentCallback?, abortFlagPtr: Long)
         external fun fullTranscribeDirect(contextPtr: Long, numThreads: Int, audioBuffer: ByteBuffer, sampleCount: Int, language: String, prompt: String, suppressNonSpeech: Boolean, vadModelPath: String, segmentCallback: WhisperSegmentCallback?, progressCallback: WhisperProgressCallback?, abortFlagPtr: Long)

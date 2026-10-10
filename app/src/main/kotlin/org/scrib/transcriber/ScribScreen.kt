@@ -763,9 +763,9 @@ private fun SkipSilenceEntry(state: ScribUiState, onToggle: (Boolean) -> Unit) {
     }
 }
 
-// A driver crash or a very slow first-use shader compile on some GPUs (seen on PowerVR, for
-// instance) is the reason this needs a manual override rather than relying only on the
-// automatic CPU fallback baked into the native side.
+// The automatic CPU fallback in the native side only covers a GPU backend that fails to load. It
+// does not cover one that loads and then computes the wrong answer, which is what the measured
+// PowerVR device did — hence a switch, and hence off by default.
 @Composable
 private fun UseGpuEntry(state: ScribUiState, onToggle: (Boolean) -> Unit) {
     val cs = MaterialTheme.colorScheme

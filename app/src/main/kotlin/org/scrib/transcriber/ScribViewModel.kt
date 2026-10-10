@@ -293,7 +293,10 @@ class ScribViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val (msg, err) = withContext(Dispatchers.IO) {
                 try {
-                    val whisper = WhisperContext.createContextFromFile(active.absolutePath)
+                    // Built the same way the engine builds its context, so the self-test
+                    // reports the configuration transcription actually runs with.
+                    val useGpu = ModelManager.useGpu(ctx)
+                    val whisper = WhisperContext.createContextFromFile(active.absolutePath, useGpu, !useGpu)
                     val audio = ctx.assets.open("jfk.wav").use { WavDecoder.decode(it) }
                     val text = whisper.transcribeData(audio, "en")
                     whisper.release()

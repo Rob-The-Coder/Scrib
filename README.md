@@ -44,7 +44,11 @@ cd scrib
 ./gradlew :app:assembleRelease
 ```
 
-Requirements: Android SDK 35, NDK 27, CMake. `minSdk` 26, `arm64-v8a`.
+Requirements: Android SDK 35, NDK 27, CMake, and a Vulkan SDK on the build host —
+the GGML Vulkan backend compiles its compute shaders at build time with `glslc`, so
+the build stops at `find_package(Vulkan COMPONENTS glslc REQUIRED)` without one.
+`minSdk` 29, `arm64-v8a` — Vulkan 1.1 entry points are only in the NDK's
+`libvulkan.so` stub from API 29 on, and the native target and the manifest have to agree.
 
 ## Privacy
 

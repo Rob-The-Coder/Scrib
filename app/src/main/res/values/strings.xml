@@ -38,7 +38,7 @@
     <string name="status_vad_failed">Couldn\'t download the speech detector — check your connection and try again.</string>
 
     <string name="gpu_entry_title">Use GPU acceleration</string>
-    <string name="gpu_entry_sub">Runs transcription on the device GPU when available. Falls back to CPU automatically if it fails — turn off if transcription is slower or unstable on your device.</string>
+    <string name="gpu_entry_sub">Runs transcription on the device GPU instead of the CPU. This is a trial switch: on the phones measured so far the GPU was slower and produced the wrong text, so it stays off until you turn it on.</string>
 
     <string name="ime_label">Scrib Voice</string>
     <string name="ime_entry_title">Voice keyboard</string>

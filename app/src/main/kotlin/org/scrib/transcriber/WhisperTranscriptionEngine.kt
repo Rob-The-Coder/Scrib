@@ -21,6 +21,9 @@ class WhisperTranscriptionEngine(private val appContext: Context) : Transcriptio
     @Volatile
     private var loadedUseGpu: Boolean = true
 
+    @Volatile
+    private var loadedFlashAttn: Boolean = true
+
     override fun transcribe(
         audio: ParcelFileDescriptor,
         request: TranscriptionRequest?,
@@ -117,6 +120,8 @@ class WhisperTranscriptionEngine(private val appContext: Context) : Transcriptio
         whisper?.release()
         whisper = null
         loadedPath = null
+        loadedUseGpu = true
+        loadedFlashAttn = true
     }
 
     override fun capabilities(): TranscriberCapabilities {
@@ -151,18 +156,24 @@ class WhisperTranscriptionEngine(private val appContext: Context) : Transcriptio
         val model = ModelManager.activeModelFile(appContext) ?: throw ModelNotAvailableException()
         val path = model.absolutePath
         val useGpu = ModelManager.useGpu(appContext)
+        // Flash attention is asked for on the CPU and never on the GPU. Measured on the Pixel 10
+        // (PowerVR DXT-48-1536) with ggml-vulkan and large-v3-turbo q5_0, one encoder pass over
+        // the 11 s sample took 74 s with it on against 23 s with it off, while the CPU did the
+        // same pass in 20 s. See GPU-PERF.md.
+        val flashAttn = !useGpu
         whisper?.let {
-            if (loadedPath == path && loadedUseGpu == useGpu) {
+            if (loadedPath == path && loadedUseGpu == useGpu && loadedFlashAttn == flashAttn) {
                 return it
             }
             it.release()
             whisper = null
             loadedPath = null
         }
-        return WhisperContext.createContextFromFile(path, useGpu).also {
+        return WhisperContext.createContextFromFile(path, useGpu, flashAttn).also {
             whisper = it
             loadedPath = path
             loadedUseGpu = useGpu
+            loadedFlashAttn = flashAttn
         }
     }
 

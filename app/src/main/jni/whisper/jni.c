@@ -183,7 +183,11 @@ static struct whisper_context *whisper_init_from_asset(
             .close = &asset_close
     };
 
-    return whisper_init_with_params(&loader, whisper_context_default_params());
+    // This path never loads the Vulkan backend, so asking for the GPU would only work by
+    // accident, on whichever earlier call happened to register it.
+    struct whisper_context_params cparams = whisper_context_default_params();
+    cparams.use_gpu = false;
+    return whisper_init_with_params(&loader, cparams);
 }
 
 JNIEXPORT jlong JNICALL
@@ -200,7 +204,7 @@ Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContextFromAsset(
 
 JNIEXPORT jlong JNICALL
 Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContext(
-        JNIEnv *env, jobject thiz, jstring model_path_str, jboolean use_gpu) {
+        JNIEnv *env, jobject thiz, jstring model_path_str, jboolean use_gpu, jboolean flash_attn) {
     UNUSED(thiz);
     struct whisper_context *context = NULL;
     load_cpu_backend();
@@ -209,10 +213,12 @@ Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContext(
     }
     const char *model_path_chars = (*env)->GetStringUTFChars(env, model_path_str, NULL);
     struct whisper_context_params cparams = whisper_context_default_params();
-    cparams.flash_attn = true;
+    // Flash attention is a per-run choice rather than a constant, because the GPU and the CPU want
+    // opposite answers: on the measured Vulkan device it cost 74 s against 23 s for one encoder
+    // pass, while on the CPU it is 8% faster on. The caller decides; see GPU-PERF.md.
+    cparams.flash_attn = flash_attn != JNI_FALSE;
     cparams.use_gpu = use_gpu != JNI_FALSE;
     context = whisper_init_from_file_with_params(model_path_chars, cparams);
-    __android_log_print(ANDROID_LOG_INFO, "Scrib", "Context created, use_gpu=%d (context %s)", use_gpu, context ? "ok" : "NULL");
     // GPU init can fail even after the backend loaded (missing driver support, out of memory
     // on a large model) — retry once on CPU instead of handing the caller a null context.
     if (context == NULL && cparams.use_gpu) {
@@ -220,6 +226,9 @@ Java_com_whispercpp_whisper_WhisperLib_00024Companion_initContext(
         cparams.use_gpu = false;
         context = whisper_init_from_file_with_params(model_path_chars, cparams);
     }
+    // Logged after the retry so the line reports what actually ran, not what was asked for.
+    __android_log_print(ANDROID_LOG_INFO, "Scrib", "Context created, use_gpu=%d flash_attn=%d (context %s)",
+                        cparams.use_gpu, cparams.flash_attn, context ? "ok" : "NULL");
     (*env)->ReleaseStringUTFChars(env, model_path_str, model_path_chars);
     return (jlong) context;
 }
